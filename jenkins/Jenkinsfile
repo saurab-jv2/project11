@@ -1,19 +1,24 @@
 pipeline {
     agent any
+    environment {
+        ENV_FILE = '/home/itadmin/.env'
+    }
 
     stages {
 
         stage('Build & Start Services') {
             steps {
-                sh 'docker-compose down || true'
-                sh 'docker-compose up -d --build'
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose down || true'
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d --build'
             }
         }
 
         stage('Test') {
             steps {
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose down || true'
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d --build'
                 sh 'sleep 10'
-                sh 'curl -f http://localhost:5000/health'
+                sh 'export $(cat $ENV_FILE | xargs) && curl -f http://localhost:5000/health'
             }
         }
     }
