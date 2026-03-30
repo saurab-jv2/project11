@@ -1,47 +1,81 @@
-from flask import Flask
-import psycopg2
 import os
-import time
+import json
+import redis
+import psycopg2
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-DB_HOST = os.environ["DB_HOST"]
-DB_NAME = os.environ["DB_NAME"]
-DB_USER = os.environ["DB_USER"]
-DB_PASS = os.environ["DB_PASS"]
+DB_HOST = os.getenv("DB_HOST", "postgres")
+DB_NAME = os.getenv("DB_NAME", "appdb")
+DB_USER = os.getenv("POSTGRES_USER", "appuser")
+DB_PASS = os.getenv("POSTGRES_PASSWORD", "apppass")
+
+REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+
+redis_client = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    decode_responses=True
+)
+
 
 def get_db_connection():
-    for i in range(10):
-        try:
-            conn = psycopg2.connect(
-                host=DB_HOST,
-                database=DB_NAME,
-                user=DB_USER,
-                password=DB_PASS
-            )
-            return conn
-        except Exception:
-            time.sleep(2)
-    raise Exception("Database not reachable")
+    return psycopg2.connect(
+        host=DB_HOST,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS
+    )
+
+
 @app.route("/")
 def home():
-    return "Hello from Jenkins CI/CD 🚀 \n checking webhook again"
+    return jsonify({"message": "Flask app is running"})
+
 
 @app.route("/health")
 def health():
-    return {"status": "ok"}
+    return jsonify({"status": "ok"})
+
+
+@app.route("/redis-test")
+def redis_test():
+    redis_client.set("test_key", "Redis is working")
+    value = redis_client.get("test_key")
+    return jsonify({"redis_value": value})
+
 
 @app.route("/db-test")
 def db_test():
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT 1;")
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        return {"db": result[0]}
-    except Exception as e:
-        return {"db-error": str(e)}
+    cache_key = "db_test_table_rows"
 
-app.run(host="0.0.0.0", port=5000)
+    cached_data = redis_client.get(cache_key)
+    if cached_data:
+        return jsonify({
+            "source": "redis-cache",
+            "data": json.loads(cached_data)
+        })
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, created_at FROM test_table ORDER BY id;")
+    rows = cur.fetchall()
+    cur.close()
+    conn.close()
+
+    result = []
+    for row in rows:
+        result.append({
+            "id": row[0],
+            "name": row[1],
+            "created_at": row[2].isoformat() if row[2] else None
+        })
+
+    redis_client.setex(cache_key, 60, json.dumps(result))
+
+    return jsonify({
+        "source": "postgres",
+        "data": result
+    })

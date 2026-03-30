@@ -1,19 +1,24 @@
-CREATE DATABASE appdb;
-
-CREATE USER appuser WITH ENCRYPTED PASSWORD 'apppass';
-
-GRANT ALL PRIVILEGES ON DATABASE appdb TO appuser;
-
+-- connect to the DB created by POSTGRES_DB
 \c appdb;
 
+-- ensure correct ownership
 ALTER SCHEMA public OWNER TO appuser;
 
-CREATE TABLE test_table (
+-- create table
+CREATE TABLE IF NOT EXISTS test_table (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- set owner
 ALTER TABLE test_table OWNER TO appuser;
 
-INSERT INTO test_table (name) VALUES ('test1'), ('test2');
+-- insert sample data (avoid duplicates)
+INSERT INTO test_table (name)
+SELECT 'test1'
+WHERE NOT EXISTS (SELECT 1 FROM test_table WHERE name = 'test1');
+
+INSERT INTO test_table (name)
+SELECT 'test2'
+WHERE NOT EXISTS (SELECT 1 FROM test_table WHERE name = 'test2');
