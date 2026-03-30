@@ -98,9 +98,8 @@ def init_redis_from_db():
 
 
 @app.route("/")
-def live():
+def home():
     return "<h1>Hello From CI/CD</h1>", 200
-
 
 
 @app.route("/live")
