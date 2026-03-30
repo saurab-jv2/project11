@@ -18,7 +18,7 @@ pipeline {
                 sh 'export $(cat $ENV_FILE | xargs) && docker compose down || true'
                 sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d --build'
                 sh 'sleep 10'
-                sh 'export $(cat $ENV_FILE | xargs) && curl -f http://localhost:80/health'
+                sh 'export $(cat $ENV_FILE | xargs) && curl -f http://localhost/health'
             }
         }
     }
