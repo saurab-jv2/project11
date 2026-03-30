@@ -166,5 +166,4 @@ for _ in range(10):
         break
     except Exception:
         time.sleep(2)
-
-app.run(host="0.0.0.0", port=5000)
+        continue
