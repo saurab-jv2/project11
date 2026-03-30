@@ -4,9 +4,13 @@ import time
 
 import psycopg2
 import redis
-from flask import Flask, jsonify, g, request
+from flask import Flask, Response, jsonify, g, request
 
 app = Flask(__name__)
+
+APP_START_TIME = time.time()
+REQUEST_COUNT = 0
+ERROR_COUNT = 0
 
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
@@ -17,7 +21,6 @@ REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
 
 VISITS_KEY = "visits"
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -123,10 +126,19 @@ def before_request_logging():
 
 @app.after_request
 def after_request_logging(response):
+    global REQUEST_COUNT
+    global ERROR_COUNT
+
+    REQUEST_COUNT += 1
+
+    if response.status_code >= 400:
+        ERROR_COUNT += 1
+
     duration_ms = round((time.time() - g.start_time) * 1000, 2)
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+
     logger.info(
-        'Request method=%s path=%s status=%s duration_ms=%s ip=%s',
+        "Request method=%s path=%s status=%s duration_ms=%s ip=%s",
         request.method,
         request.path,
         response.status_code,
@@ -226,6 +238,33 @@ def visits():
         except Exception:
             logger.exception("Visits endpoint failed completely")
             return jsonify({"error": "unable to update visits"}), 500
+
+
+@app.route("/metrics")
+def metrics():
+    uptime_seconds = int(time.time() - APP_START_TIME)
+
+    try:
+        visits_count = get_db_visits_count()
+    except Exception:
+        visits_count = -1
+
+    metrics_output = (
+        f"app_requests_total {REQUEST_COUNT}\n"
+        f"app_errors_total {ERROR_COUNT}\n"
+        f"app_uptime_seconds {uptime_seconds}\n"
+        f"app_visits_total {visits_count}\n"
+    )
+
+    logger.info(
+        "Metrics served requests=%s errors=%s uptime=%s visits=%s",
+        REQUEST_COUNT,
+        ERROR_COUNT,
+        uptime_seconds,
+        visits_count
+    )
+
+    return Response(metrics_output, mimetype="text/plain")
 
 
 logger.info("Flask app starting")
