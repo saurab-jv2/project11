@@ -1,18 +1,25 @@
+from flask import Flask, jsonify
 import os
 import json
 import redis
 import psycopg2
-from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-DB_HOST = os.getenv("DB_HOST")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASS")
 
-REDIS_HOST = os.getenv("REDIS_HOST")
-REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+def get_env(name):
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+    return value
+
+DB_HOST = get_env("DB_HOST")
+DB_NAME = get_env("DB_NAME")
+DB_USER = get_env("DB_USER")
+DB_PASS = get_env("DB_PASS")
+
+REDIS_HOST = get_env("REDIS_HOST")
+REDIS_PORT = int(get_env("REDIS_PORT"))
 
 redis_client = redis.Redis(
     host=REDIS_HOST,
@@ -32,53 +39,54 @@ def get_db_connection():
 
 @app.route("/")
 def home():
-    return jsonify({"message": "Flask app is running"})
+    return jsonify({
+        "message": "Flask app is running",
+        "service": "project1"
+    })
 
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    status = {
+        "app": "ok",
+        "db": "down",
+        "redis": "down"
+    }
+
+    http_code = 200
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        cur.fetchone()
+        cur.close()
+        conn.close()
+        status["db"] = "ok"
+    except Exception as e:
+        status["db_error"] = str(e)
+        http_code = 500
+
+    try:
+        redis_client.ping()
+        status["redis"] = "ok"
+    except Exception as e:
+        status["redis_error"] = str(e)
+        http_code = 500
+
+    return jsonify(status), http_code
 
 
-@app.route("/redis-test")
-def redis_test():
-    redis_client.set("test_key", "Redis is working")
-    return jsonify({"redis_value": redis_client.get("test_key")})
-
-
-@app.route("/db-test")
-def db_test():
-    cache_key = "db_test_table_rows"
-
-    cached = redis_client.get(cache_key)
-    if cached:
+@app.route("/visits")
+def visits():
+    try:
+        count = redis_client.incr("visits")
         return jsonify({
-            "source": "redis-cache",
-            "data": json.loads(cached)
+            "message": "Visit counter working",
+            "visits": count
         })
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT id, name, created_at FROM test_table ORDER BY id;")
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    result = [
-        {
-            "id": row[0],
-            "name": row[1],
-            "created_at": row[2].isoformat() if row[2] else None
-        }
-        for row in rows
-    ]
-
-    redis_client.setex(cache_key, 60, json.dumps(result))
-
-    return jsonify({
-        "source": "postgres",
-        "data": result
-    })
-
-
-app.run(host="0.0.0.0", port=5000)
+    except Exception as e:
+        return jsonify({
+            "error": "Redis connection failed",
+            "details": str(e)
+        }), 500
