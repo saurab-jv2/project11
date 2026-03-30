@@ -44,6 +44,9 @@ def home():
         "service": "project1"
     })
 
+@app.route("/live")
+def live():
+    return jsonify({"status": "ok"}), 200
 
 @app.route("/health")
 def health():
