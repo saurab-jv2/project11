@@ -97,6 +97,12 @@ def init_redis_from_db():
         r.set(VISITS_KEY, db_count)
 
 
+@app.route("/")
+def live():
+    return "<h1>Hello From CI/CD</h1>", 200
+
+
+
 @app.route("/live")
 def live():
     return jsonify({"status": "live"}), 200
