@@ -1,22 +1,33 @@
 pipeline {
     agent any
+
     environment {
         ENV_FILE = "/opt/project-env/project1.env"
     }
 
     stages {
 
-        stage('Build & Start Services') {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose build'
+            }
+        }
+
+        stage('Deploy') {
             steps {
                 sh 'export $(cat $ENV_FILE | xargs) && docker compose down || true'
-                sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d --build'
+                sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'export $(cat $ENV_FILE | xargs) && docker compose down || true'
-                sh 'export $(cat $ENV_FILE | xargs) && docker compose up -d --build'
                 sh 'sleep 10'
                 sh 'export $(cat $ENV_FILE | xargs) && curl -f http://localhost/health'
             }
